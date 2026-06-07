@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Iterable, List, Mapping, Sequence, Set, Tuple
 
 # A small stopword list keeps the overlap heuristic from being dominated by
 # function words that are present in literally any sentence and source.
@@ -177,7 +177,7 @@ def verify(
         cite_ids = [cid for _, cid in _iter_citations(sentence)]
         # Strip citation markers before measuring overlap so we score on
         # actual claim words, not the bracket text.
-        sentence_text = _CITATION_RE.sub("", sentence).strip()
+        sentence_text = _strip_citations(sentence)
         claim = Claim(sentence=sentence_text, citations=cite_ids)
 
         if not cite_ids:
@@ -223,6 +223,23 @@ def _iter_citations(text: str) -> Iterable[Tuple[int, str]]:
         num, named = m.group(1), m.group(2)
         cid = num if num else named
         yield m.start(), cid
+
+
+def _strip_citations(text: str) -> str:
+    """Remove citation markers and tidy the whitespace they leave behind.
+
+    Dropping a marker like ``"... loyal [99]."`` would otherwise leave an
+    orphaned space before the terminal punctuation (``"... loyal ."``). We
+    collapse runs of whitespace and drop any space that ends up sitting
+    directly before sentence-final punctuation, so the recorded claim text
+    reads naturally.
+    """
+    stripped = _CITATION_RE.sub("", text)
+    # Collapse internal whitespace runs created by marker removal.
+    stripped = re.sub(r"\s+", " ", stripped)
+    # Drop a space left dangling before terminal punctuation, e.g. "loyal .".
+    stripped = re.sub(r"\s+([.!?,;:])", r"\1", stripped)
+    return stripped.strip()
 
 
 def _split_sentences(text: str) -> List[str]:
